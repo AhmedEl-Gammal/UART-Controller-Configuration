@@ -1,0 +1,237 @@
+module tb_regfile_3;
+// =========================================================================
+// Parameter 
+// =========================================================================
+parameter  DATA_WIDTH = 16 ;
+parameter  N_Reg = 4 ;
+parameter  ADDR_WIDTH = 2 ;
+
+// =========================================================================
+//  Design Inputs and Outputs
+// =========================================================================
+
+logic clk;
+logic rst_n;
+logic wr_en;
+logic [$clog2(N_Reg):0] wr_addr, rd_addr_a, rd_addr_b;
+logic [DATA_WIDTH-1:0] wr_data;
+logic uart_busy, uart_error, update_ok;
+logic uart_enable;
+logic [2:0]  uart_mode;
+logic [15:0] uart_rate;
+
+
+// (*_1 | *_0) >> Refer to Read_Latency = 0 ,Read_Latency = 1  
+logic [DATA_WIDTH-1:0] rd_data_a_1, rd_data_a_0;
+logic [DATA_WIDTH-1:0] rd_data_b_1, rd_data_b_0;
+logic rd_valid_a_1, rd_valid_b_1;
+logic rd_valid_a_0, rd_valid_b_0;
+
+
+// =========================================================================
+//  DUT Instantiation
+// =========================================================================
+// ----- dut_0 (Latency=0)
+regfile #(.DATA_WIDTH(DATA_WIDTH), .ADDR_WIDTH(ADDR_WIDTH), .READ_LATENCY(0), .N_Reg(N_Reg)) dut_0 ( 
+	.clk (clk),
+	.rst_n (rst_n),
+	// Input software interface 
+	.wr_en (wr_en),
+	.wr_addr (wr_addr),
+	.wr_data (wr_data),
+	.rd_addr_a (rd_addr_a),
+	.rd_addr_b (rd_addr_b),
+	// Input Hardware interface 
+	.uart_busy (uart_busy),
+	.uart_error (uart_error),
+	.update_ok (update_ok),
+	// Outputs effected by latency  
+	.rd_data_a (rd_data_a_0),
+	.rd_data_b (rd_data_b_0),
+	.rd_valid_a (rd_valid_a_0),
+	.rd_valid_b (rd_valid_b_0),
+	
+	.uart_enable (),
+	.uart_mode (),
+	.uart_rate ());
+	
+// ----- dut (Latency=1)
+regfile #(.DATA_WIDTH(DATA_WIDTH), .ADDR_WIDTH(ADDR_WIDTH), .READ_LATENCY(1), .N_Reg(N_Reg)) dut_1 ( 
+	.clk (clk),
+	.rst_n (rst_n),
+	.wr_en (wr_en),
+	.wr_addr (wr_addr),
+	.wr_data (wr_data),
+	.rd_addr_a (rd_addr_a),
+	.rd_addr_b (rd_addr_b),
+	.rd_data_a (rd_data_a_1),
+	.rd_data_b (rd_data_b_1),
+	.uart_busy (uart_busy),
+	.uart_error (uart_error),
+	.update_ok (update_ok),
+	.rd_valid_a (rd_valid_a_1),
+	.rd_valid_b (rd_valid_b_1),
+	.uart_enable (uart_enable),
+	.uart_mode (uart_mode),
+	.uart_rate (uart_rate));
+
+
+// =========================================================================
+// Clock Generator
+// =========================================================================
+initial begin
+	clk = 0;
+	forever #5 clk = ~clk;
+end
+// =========================================================================
+// Tasks
+// =========================================================================
+// ---- Reset System
+task automatic tb_reset();
+	begin
+		rst_n		<= 0;
+		wr_en		<= 0;
+		wr_addr		<= 'b0;
+		wr_data		<= 'b0;
+		uart_busy 	<= 'b0;
+		uart_error	<= 'b0;
+		update_ok	<= 'b0;
+		rd_addr_a 	<= 'b0;
+		rd_addr_b 	<= 'b0;
+		repeat(5) @(negedge clk);
+		rst_n <= 1;
+	end
+endtask
+
+
+// ---- Write Task
+task automatic write_reg;
+    // --- Inputs ---
+	input logic enable ; 
+    input logic [$clog2(N_Reg):0] addr;
+    input logic [DATA_WIDTH-1:0] data;
+    begin
+        @(negedge clk);      
+		wr_en 	 <= enable; 	
+		wr_addr  <= addr;     
+        wr_data  <= data;                 
+		@(negedge clk);      
+		wr_en 	 <= 'b0; 	
+    end
+endtask
+
+
+
+//--- Read Task with Latecny 1 
+task automatic read_ports_1;
+    input logic [$clog2(N_Reg):0] addr_a_1,addr_b_1;
+	logic [DATA_WIDTH-1:0] actual_data_a_1,actual_data_b_1;
+    begin
+	
+  
+		// Drive the address
+        @(negedge clk);
+        rd_addr_a <= addr_a_1;
+		rd_addr_b <= addr_b_1;
+        // Capture the data after a one-cycle latency 
+        @(negedge clk);
+		actual_data_a_1 = rd_data_a_1;
+		actual_data_b_1 = rd_data_b_1;           
+    	$display("[%0t]  Addr_a %0d ,Addr_b %0d - data_a %0b, data_b %0b", 
+			$time, addr_a_1, addr_b_1, actual_data_a_1, actual_data_b_1);
+
+	end
+endtask
+//--- Read Task with Latecny 0 
+task automatic read_ports_0;
+    input logic [$clog2(N_Reg):0] addr_a_0,addr_b_0;
+    logic [DATA_WIDTH-1:0] actual_data_a_0,actual_data_b_0;
+        rd_addr_a <= addr_a_0;
+		rd_addr_b <= addr_b_0;
+		 // Capture the data in the same cycle based on combinational logic
+		actual_data_a_0 = rd_data_a_0; 
+		actual_data_b_0 = rd_data_b_0;  
+		#1;
+		$display("[%0t]  Addr_a %0d ,Addr_b %0d - data_a %0b, data_b %0b", 
+					$time,  addr_a_0, addr_b_0, actual_data_a_0, actual_data_b_0);
+
+endtask
+
+
+
+// --- Task: UART Peripheral Status 
+task automatic set_uart_status(
+	input logic busy ,
+	input logic error, 
+	input logic ok 
+); 
+	begin 
+		@(negedge clk)
+		uart_busy  <= busy;
+		uart_error <= error;
+		update_ok  <= ok;
+	end 
+endtask
+
+
+// =========================================================================
+// Main Test Process
+// =========================================================================
+
+initial begin
+	$dumpfile("waveform.vcd");
+	$dumpvars(0, tb_regfile_3);
+	// ===============================
+	// First Case (Reset behavior)
+	// ===============================
+	$display(" =========================================== ");
+	$display(" ================== TC_01 ================== ");
+	tb_reset();
+	set_uart_status(.ok(0),.error(0),.busy(0));	
+	#25;
+	read_ports_1(.addr_a_1(0),.addr_b_1(1));
+	read_ports_1(.addr_a_1(2),.addr_b_1(3));
+	// ===============================
+	// Second Case (Write/Read Operation)"Smoke Test"
+	// ===============================
+	$display(" =========================================== ");
+	$display(" ================== TC_02 ================== ");
+	write_reg(.enable(1),.addr(0),.data('b1011));
+	read_ports_1(.addr_a_1(0),.addr_b_1(1));
+	$display(" Check Memory on simulation Waveform ");
+	// ===============================
+	// Third Case (OOB of Write and Read Operation)"Smoke Test"
+	// ===============================
+	$display(" =========================================== ");
+	$display(" ================== TC_04 ================== ");
+	write_reg(.enable(1),.addr(7),.data('b1111));
+	read_ports_1(.addr_a_1(8),.addr_b_1(9));
+	// ===============================
+	// Fourth Case (RAW Hazard within latecny=0)"Smoke Test"
+	// ===============================
+	$display(" =========================================== ");
+	$display(" ================== TC_05 ================== ");
+	write_reg(.enable(1),.addr(0),.data('b1111));
+	read_ports_0(.addr_a_0(0),.addr_b_0(1));
+	// ===============================
+	// Fifth Case (RAW Hazard within latecny=1)"Smoke Test"
+	// ===============================
+	$display(" =========================================== ");
+	$display(" ================== TC_05_01 ================== ");
+	write_reg(.enable(1),.addr(0),.data('hAC));
+	read_ports_1(.addr_a_1(0),.addr_b_1(1));
+	// ===============================
+	// Six Case (Sticky Error)"Smoke Test"
+	// ===============================
+	$display(" =========================================== ");
+	$display(" ================== TC_06 ================== ");
+	write_reg(.enable(1),.addr(2),.data('b11));
+	read_ports_0(.addr_a_0(2),.addr_b_0(1));
+	read_ports_1(.addr_a_1(2),.addr_b_1(1));
+	#500 ;
+	$stop;
+	end 
+	
+	
+endmodule 
+	
