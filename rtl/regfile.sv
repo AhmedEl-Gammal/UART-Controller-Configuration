@@ -41,7 +41,7 @@ logic [DATA_WIDTH-1:0] mem [(N_Reg-1):0];
 logic [DATA_WIDTH-1:0] shadow_reg;
 
 // Integer for loop generation
-int i;
+
 
 // =========================================================================
 // WRITE OPERATION
@@ -58,12 +58,12 @@ int i;
 // Parametrize & sync write with enable & syn_reset & OOB & Shadow-state & Register reserved & Error-bit Clear 
 always_ff @(posedge clk) begin
 	if (!rst_n) begin
+		shadow_reg <= 16'd9600;
 		// Initialize all registers to 0
-		for (i=0; i <N_Reg ; i +=1) begin 
+		for (int i=0; i<N_Reg ; i +=1) begin 
 			if (i==1) begin 
 				// Baud-Rate initial case
-				mem[i] <= 16'b10010110000000;
-				shadow_reg <= 16'b10010110000000;
+				mem[i] <= 16'd9600;
 			end 	
 			else mem[i] <= 16'b0;
 		end
@@ -72,9 +72,9 @@ always_ff @(posedge clk) begin
 		// ==================================
 		// Update (Baud Rate) Register if update_OK = 1 
 		// ==================================
-		if (update_ok) 
+		if (update_ok) begin 
 			mem[1] <= shadow_reg;	
-		
+			end 
 		// ==================================
 		// Reserved for software(STATUS Busy) Register and access by only hardware 
 		// ==================================
@@ -83,25 +83,29 @@ always_ff @(posedge clk) begin
 		// ==================================
 		// Handle Logic (STATUS Error) Register (Sticky bit)  
 		// ==================================
-		if (uart_error)  
+		if (uart_error)  begin 
 			mem[2][1]   <=1'b1;
-		else if (wr_en && (wr_addr == 2) && wr_data[1])	
+			end 
+		else if (wr_en && (wr_addr == 2) && wr_data[1])	begin 
 			mem[2][1]   <= 1'b0;
-		
+			end 
 		
 		// ==================================
 		// Handle another Logic Registers (OOB)  
 		// ==================================
 		if (wr_en && (wr_addr < N_Reg)) begin  
-			if (wr_addr == 1) 
+			if (wr_addr == 1) begin
 				shadow_reg <= wr_data;	// ----- update shadow_reg 
-			else if (wr_addr == 2)   
+				end 
+			else if (wr_addr == 2)   begin
 				mem[wr_addr][DATA_WIDTH-1:2] <= wr_data[DATA_WIDTH-1:2]; // ----- (0,1)=(Busy,Error) 
-			else // ----- Standard Write
+				end
+			else begin // ----- Standard Write
 				mem[wr_addr] <= wr_data;
+				end
+			end 
 		end 
 	end 
-end 
 
 // =========================================================================
 // READ OPERATION
@@ -112,71 +116,64 @@ end
 logic [DATA_WIDTH-1 : 0]comb_a,comb_b;
 logic comb_rd_valid_a, comb_rd_valid_b;
 
-/*
-always_comb begin 
-	if(rd_addr_a < N_Reg)	comb_a <= mem[rd_addr_a];
-	else  comb_a = 'b0 ;
-	if(rd_addr_b < N_Reg)	comb_b <= mem[rd_addr_b];
-	else comb_b = 'b0 ;
-	end 
-*/
-generate
-        if (READ_LATENCY == 0) begin : gen_latency_zero
-            
-            // ====================================
-            // PORT A LOGIC (RAW - OOB) Supported
-            // ====================================
-            assign rd_data_a = ( (rd_addr_a < N_Reg) && (wr_addr == rd_addr_a) ) ? wr_data : // --- RAW 
-                               (rd_addr_a < N_Reg) ? mem[rd_addr_a] : 16'b0 ; // --- OOB
-                               
-            assign rd_valid_a = (rd_addr_a < N_Reg) ? 1'b1 : 1'b0; // --- not determined in FRD
 
-			// ====================================
-            // PORT B LOGIC (RAW - OOB) Supported
-            // ====================================
-            assign rd_data_b = ( (rd_addr_b < N_Reg) && (wr_addr == rd_addr_b) ) ? wr_data : // --- RAW 
-                               (rd_addr_b < N_Reg) ? mem[rd_addr_b] : 16'b0 ; // --- OOB
-                               
-            assign rd_valid_b = (rd_addr_b < N_Reg) ? 1'b1 : 1'b0; // --- not determined in FRD
+generate
+	if (READ_LATENCY == 0) begin : gen_latency_zero
+		
+		// ====================================
+		// PORT A LOGIC (RAW - OOB) Supported
+		// ====================================
+		assign rd_data_a = ( (rd_addr_a < N_Reg) && (wr_addr == rd_addr_a) ) ? wr_data : // --- RAW 
+						   (rd_addr_a < N_Reg) ? mem[rd_addr_a] : 16'b0 ; // --- OOB
+						   
+		assign rd_valid_a = (rd_addr_a < N_Reg) ? 1'b1 : 1'b0; // --- not determined in FRD
+
+		// ====================================
+		// PORT B LOGIC (RAW - OOB) Supported
+		// ====================================
+		assign rd_data_b = ( (rd_addr_b < N_Reg) && (wr_addr == rd_addr_b) ) ? wr_data : // --- RAW 
+						   (rd_addr_b < N_Reg) ? mem[rd_addr_b] : 16'b0 ; // --- OOB
+						   
+		assign rd_valid_b = (rd_addr_b < N_Reg) ? 1'b1 : 1'b0; // --- not determined in FRD
 		end
-		else begin : gen_latency_nonzero	
-			always_ff @(posedge clk) begin 
-				if (!rst_n) begin
-					comb_a  <= 16'b0;
-					comb_b  <= 16'b0;
-					comb_rd_valid_a <= 1'b0;
-					comb_rd_valid_b <= 1'b0;
+	else begin : gen_latency_nonzero	
+		always_ff @(posedge clk) begin 
+			if (!rst_n) begin
+				comb_a  <= 16'b0;
+				comb_b  <= 16'b0;
+				comb_rd_valid_a <= 1'b0;
+				comb_rd_valid_b <= 1'b0;
 				end 
-				
+			
+			else begin 
+				// ====================================
+				// PORT A LOGIC OOB Supported
+				// ====================================
+				if (rd_addr_a < N_Reg) begin 
+					comb_a <= mem[rd_addr_a];
+					comb_rd_valid_a <= 1'b1;  // --- not determined in FRD
+					end 
 				else begin 
-					// ====================================
-					// PORT A LOGIC OOB Supported
-					// ====================================
-					if (rd_addr_a < N_Reg) begin 
-						comb_a <= mem[rd_addr_a];
-						comb_rd_valid_a <= 1'b1;  // --- not determined in FRD
-					end 
-					else begin 
-						comb_a <= 16'b0;
-						comb_rd_valid_a <= 1'b0; // --- not determined in FRD
+					comb_a <= 16'b0;
+					comb_rd_valid_a <= 1'b0; // --- not determined in FRD
 					end		
-					// ====================================
-					// PORT B LOGIC OOB Supported
-					// ====================================
-					if (rd_addr_b < N_Reg) begin 
-						comb_b <= mem[rd_addr_b];
-						comb_rd_valid_b <= 1'b1;  // --- not determined in FRD
+				// ====================================
+				// PORT B LOGIC OOB Supported
+				// ====================================
+				if (rd_addr_b < N_Reg) begin 
+					comb_b <= mem[rd_addr_b];
+					comb_rd_valid_b <= 1'b1;  // --- not determined in FRD
 					end 
-					else begin 
-						comb_b <= 16'b0;
-						comb_rd_valid_b <= 1'b0; // --- not determined in FRD
+				else begin 
+					comb_b <= 16'b0;
+					comb_rd_valid_b <= 1'b0; // --- not determined in FRD
 					end		
 				end 
 			end
-			assign rd_data_a = comb_a;
-			assign rd_data_b = comb_b;
-			assign rd_valid_a = comb_rd_valid_a;
-			assign rd_valid_b = comb_rd_valid_b;
+		assign rd_data_a = comb_a;
+		assign rd_data_b = comb_b;
+		assign rd_valid_a = comb_rd_valid_a;
+		assign rd_valid_b = comb_rd_valid_b;
 		end 
 endgenerate
 
