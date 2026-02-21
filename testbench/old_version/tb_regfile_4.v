@@ -1,4 +1,4 @@
-module tb_regfile_5;
+module tb_regfile_4;
 // =========================================================================
 // Parameter 
 // =========================================================================
@@ -68,76 +68,6 @@ regfile #(.DATA_WIDTH(DATA_WIDTH), .ADDR_WIDTH(ADDR_WIDTH), .READ_LATENCY(READ_L
 	.uart_rate (uart_rate),       
 	.mem(dut.mem)  // Internal Register 
     );
-
-
-
-
-// =========================================================================
-// Function Coverage 
-// =========================================================================
-covergroup rst_fcvg @(posedge clk);
-cp_rst_n: coverpoint rst_n {
-	bins active_rst 	= {0} ;  
-	bins de_active_rst 	= {1} ; 
-}
-endgroup 
-
-covergroup regfile_fcvg @(posedge clk) iff(rst_n);
-
-
-cp_wr_en: coverpoint wr_en {
-	bins wr_active 	= {1} ;  
-	bins wr_stop	= {0} ; 
-}
-
-// ---- Write addresses Points
-cp_wr_addr: coverpoint wr_addr {
-
- bins w_ctrl   = {0};
- bins w_baud   = {1};
- bins w_status = {2};
- bins w_oob    = default;
- 
-}
-
-// ---- Read addresses Points om Port-a
-cp_rd_addr_a: coverpoint rd_addr_a {
- bins r_ctrl_a   = {0};
- bins r_baud_a   = {1};
- bins r_status_a = {2};
- bins r_oob_a    = default;
- }
-// ---- Read addresses Points om Port-b
-cp_rd_addr_b: coverpoint rd_addr_b {
- bins r_ctrl_b   = {0};
- bins r_baud_b   = {1};
- bins r_status_b = {2};
- bins r_oob_b    = default;
- 
-}
-
-// ---- update_ok 
-cp_update_ok: coverpoint update_ok {
-	bins stall_shadow 	= {0} ;  
-	bins update_baud 	= {1} ; 
-
-}
-
-cp_uart_error: coverpoint uart_error {
-	bins de_active_error	= {0} ;  
-	bins active_error 		= {1} ; 
-
-}
-
-// Check combinations of Read/Write vs Address
-cr_wr_en_addr	: cross cp_wr_en,wr_addr;
-cr_update_rd_a	: cross cp_update_ok,rd_addr_a;
-cr_update_rd_b	: cross cp_update_ok,rd_addr_b;
-cr_error_wr		: cross cp_uart_error,wr_addr;
-cr_error_rd_a	: cross cp_uart_error,rd_addr_a;
-cr_error_rd_b	: cross cp_uart_error,rd_addr_b;
-
-endgroup 
 
 // =========================================================================
 // Clock Generator
@@ -246,14 +176,9 @@ int i;
 // =========================================================================
 // Main Test Process
 // =========================================================================
-// Instantiate the coverage group
-initial begin
- rst_fcvg 	cg_inst_rst =new();	
- regfile_fcvg cg_inst = new();
-end
 initial begin
 	$dumpfile("waveform.vcd");
-	$dumpvars(0, tb_regfile_5);
+	$dumpvars(0, tb_regfile_4);
 	// ===============================
 	// (Reset behavior) <Smoke-Test>
 	// ===============================
@@ -379,4 +304,3 @@ initial begin
 	$stop;
 	end 
 endmodule 
-	

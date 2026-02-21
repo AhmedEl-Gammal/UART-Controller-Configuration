@@ -1,4 +1,4 @@
-module tb_regfile_4;
+module tb_regfile_5;
 // =========================================================================
 // Parameter 
 // =========================================================================
@@ -68,6 +68,76 @@ regfile #(.DATA_WIDTH(DATA_WIDTH), .ADDR_WIDTH(ADDR_WIDTH), .READ_LATENCY(READ_L
 	.uart_rate (uart_rate),       
 	.mem(dut.mem)  // Internal Register 
     );
+
+
+
+
+// =========================================================================
+// Function Coverage 
+// =========================================================================
+covergroup rst_fcvg @(posedge clk) ;
+cp_rst_n: coverpoint rst_n {
+	bins active_rst 	= {0} ;  
+	bins de_active_rst 	= {1} ; 
+}
+endgroup 
+
+covergroup regfile_fcvg @(posedge clk) ;
+
+
+cp_wr_en: coverpoint wr_en  iff(rst_n) {
+	bins wr_active 	= {1} ;  
+	bins wr_stop	= {0} ; 
+}
+
+// ---- Write addresses Points
+cp_wr_addr: coverpoint wr_addr iff(rst_n) {
+
+ bins w_ctrl   = {0};
+ bins w_baud   = {1};
+ bins w_status = {2};
+ bins w_oob    = default;
+ 
+}
+
+// ---- Read addresses Points om Port-a
+cp_rd_addr_a: coverpoint rd_addr_a iff(rst_n) {
+ bins r_ctrl_a   = {0};
+ bins r_baud_a   = {1};
+ bins r_status_a = {2};
+ bins r_oob_a    = default;
+ }
+// ---- Read addresses Points om Port-b
+cp_rd_addr_b: coverpoint rd_addr_b iff(rst_n) {
+ bins r_ctrl_b   = {0};
+ bins r_baud_b   = {1};
+ bins r_status_b = {2};
+ bins r_oob_b    = default;
+ 
+}
+
+// ---- update_ok 
+cp_update_ok: coverpoint update_ok iff(rst_n) {
+	bins stall_shadow 	= {0} ;  
+	bins update_baud 	= {1} ; 
+
+}
+
+cp_uart_error: coverpoint uart_error iff(rst_n) {
+	bins de_active_error	= {0} ;  
+	bins active_error 		= {1} ; 
+
+}
+
+// Check combinations of Read/Write vs Address
+cr_wr_en_addr	: cross cp_wr_en,cp_wr_addr;
+cr_update_rd_a	: cross cp_update_ok,cp_rd_addr_a;
+cr_update_rd_b	: cross cp_update_ok,cp_rd_addr_b;
+cr_error_wr		: cross cp_uart_error,cp_wr_addr;
+cr_error_rd_a	: cross cp_uart_error,cp_rd_addr_a;
+cr_error_rd_b	: cross cp_uart_error,cp_rd_addr_b;
+
+endgroup 
 
 // =========================================================================
 // Clock Generator
@@ -173,12 +243,20 @@ task automatic Wait;
 	#(10 * number_cycles);
 endtask
 int i;
+rst_fcvg 	cg_inst_rst;
+regfile_fcvg cg_inst;
 // =========================================================================
 // Main Test Process
 // =========================================================================
+// Instantiate the coverage group
+
+initial begin
+  	cg_inst_rst =new();	
+	cg_inst = new();
+end
 initial begin
 	$dumpfile("waveform.vcd");
-	$dumpvars(0, tb_regfile_4);
+	$dumpvars(0, tb_regfile_5);
 	// ===============================
 	// (Reset behavior) <Smoke-Test>
 	// ===============================
@@ -216,7 +294,7 @@ initial begin
 	$display(" ================== TC_05 ================== ");
 	$display(" ========== write_read_hazard_test ========= ");
 	@(negedge clk);
-	wr_en = 1'b1; wr_addr= 16'b0; wr_data=16'b111; rd_addr_a =16'b0;
+	wr_en = 'b1; wr_addr= 16'b0; wr_data=16'b111; rd_addr_a =16'b0;
 	Wait(0.1);
 	if (READ_LATENCY == 0) begin 
 		if (rd_data_a == wr_data)
@@ -225,10 +303,9 @@ initial begin
 			$display("%0t FAIL RAW Hazard Check at address %0d and rd_data_a %0b",$time ,rd_addr_a,rd_data_a);
 		end 
 	else 	
-		$display("%0t READ_LATENCY = 1 ,SO ignore RAW Self-Check",$time ,rd_addr_a,rd_data_a);
-	wr_en = 1'b0;
-	Wait(2);
+		$display("%0t READ_LATENCY = 1 ,SO ignore RAW Self-Checkc rd_add_a %0b rd_data_a %0b",$time ,rd_addr_a,rd_data_a);
 	
+	Wait(1);
 	@(negedge clk);
 	wr_en = 1'b1; wr_addr= 16'b10; wr_data=16'b111; rd_addr_b =16'b10;
 	Wait(0.1);
@@ -238,6 +315,10 @@ initial begin
 		else 	
 			$display("%0t FAIL RAW Hazard Check at address %0d and rd_data_b %0b",$time ,rd_addr_b,rd_data_b);
 	end 
+	Wait(1);
+	wr_en = 1'b0;
+	Wait(1);
+	
 	// ===============================
 	// STICKY Bit Error <Self-Checking>
 	// ===============================
@@ -247,10 +328,12 @@ initial begin
 	read_port_b(.addr_b(2));
 	Wait(1);
 	set_uart_status(.ok(0),.error(1),.busy(0));	
-	Wait(2);
+	Wait(1);
+	set_uart_status(.ok(0),.error(0),.busy(0));	
+	Wait(1);
 	write_reg(.enable(1),.addr(2),.data('b10));
 	read_port_b(.addr_b(2));
-	if (READ_LATENCY == 0) begin  
+	if (READ_LATENCY == 1) begin  
 		if (rd_data_b == 'b00)
 			$display("%0t PASS STICKY Bit Error Check ",$time );
 		else 	
